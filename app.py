@@ -15,7 +15,10 @@ jwt = JWTManager(app)
 
 from routes.auth import auth_bp
 from routes.productos import productos_bp
-
+from routes.pedidos import pedidos_bp
+from routes.inventario import inventario_bp
+app.register_blueprint(inventario_bp, url_prefix="/api/inventario")
+app.register_blueprint(pedidos_bp, url_prefix="/api/pedidos")
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
 app.register_blueprint(productos_bp, url_prefix="/api/productos")
 
