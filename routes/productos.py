@@ -2,6 +2,8 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt
 from bson import ObjectId
 from database import db
+import cloudinary.uploader
+from config.cloudinary import *
 
 productos_bp = Blueprint("productos", __name__)
 
@@ -11,89 +13,12 @@ def serializar(producto):
 
 @productos_bp.route("/", methods=["GET"])
 def get_productos():
-    """
-    Listar todos los productos
-    ---
-    tags:
-      - Productos
-    responses:
-      200:
-        description: Lista de productos
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              _id:
-                type: string
-                example: "664f1a2b3c4d5e6f7a8b9c0d"
-              nombre:
-                type: string
-                example: "Collar Dorado"
-              precio:
-                type: number
-                example: 45000
-              stock:
-                type: integer
-                example: 10
-              categoria:
-                type: string
-                example: "Collares"
-              emoji:
-                type: string
-                example: "💍"
-              codigo:
-                type: string
-                example: "COL-001"
-    """
     productos = list(db.productos.find())
     return jsonify([serializar(p) for p in productos]), 200
 
 
 @productos_bp.route("/<id>", methods=["GET"])
 def get_producto(id):
-    """
-    Obtener un producto por ID
-    ---
-    tags:
-      - Productos
-    parameters:
-      - in: path
-        name: id
-        type: string
-        required: true
-        description: ID del producto (MongoDB ObjectId)
-        example: "664f1a2b3c4d5e6f7a8b9c0d"
-    responses:
-      200:
-        description: Datos del producto
-        schema:
-          type: object
-          properties:
-            _id:
-              type: string
-              example: "664f1a2b3c4d5e6f7a8b9c0d"
-            nombre:
-              type: string
-              example: "Collar Dorado"
-            precio:
-              type: number
-              example: 45000
-            stock:
-              type: integer
-              example: 10
-            categoria:
-              type: string
-              example: "Collares"
-            emoji:
-              type: string
-              example: "💍"
-            codigo:
-              type: string
-              example: "COL-001"
-      404:
-        description: Producto no encontrado
-    """
     producto = db.productos.find_one({"_id": ObjectId(id)})
     if not producto:
         return jsonify({"error": "Producto no encontrado"}), 404
@@ -103,139 +28,55 @@ def get_producto(id):
 @productos_bp.route("/", methods=["POST"])
 @jwt_required()
 def crear_producto():
-    """
-    Crear un nuevo producto (solo admin)
-    ---
-    tags:
-      - Productos
-    security:
-      - Bearer: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          required:
-            - nombre
-            - precio
-            - stock
-            - categoria
-            - codigo
-          properties:
-            nombre:
-              type: string
-              example: "Pulsera de Oro"
-            precio:
-              type: number
-              example: 35000
-            stock:
-              type: integer
-              example: 20
-            categoria:
-              type: string
-              example: "Pulseras"
-            emoji:
-              type: string
-              example: "✨"
-            codigo:
-              type: string
-              example: "PUL-001"
-    responses:
-      201:
-        description: Producto creado exitosamente
-        schema:
-          type: object
-          properties:
-            mensaje:
-              type: string
-              example: "Producto creado"
-            id:
-              type: string
-              example: "664f1a2b3c4d5e6f7a8b9c0d"
-      403:
-        description: No autorizado — se requiere rol admin
-      401:
-        description: Token inválido o expirado
-    """
     claims = get_jwt()
     if claims.get("rol") != "admin":
         return jsonify({"error": "No autorizado"}), 403
-    
-    data = request.get_json()
+
+    nombre    = request.form.get("nombre")
+    precio    = request.form.get("precio")
+    stock     = request.form.get("stock")
+    categoria = request.form.get("categoria")
+    emoji     = request.form.get("emoji", "💍")
+    codigo    = request.form.get("codigo")
+
+    if not all([nombre, precio, stock, categoria, codigo]):
+        return jsonify({"error": "Faltan campos obligatorios"}), 400
+
+    imagen = request.files.get("imagen")
+    imagen_url = None
+
+    if imagen:
+        resultado = cloudinary.uploader.upload(
+            imagen,
+            folder="glamour/productos"
+        )
+        imagen_url = resultado.get("secure_url")
+
     nuevo = {
-        "nombre": data["nombre"],
-        "precio": data["precio"],
-        "stock": data["stock"],
-        "categoria": data["categoria"],
-        "emoji": data.get("emoji", "💍"),
-        "codigo": data["codigo"]
+        "nombre":     nombre,
+        "precio":     float(precio),
+        "stock":      int(stock),
+        "categoria":  categoria,
+        "emoji":      emoji,
+        "codigo":     codigo,
+        "imagen_url": imagen_url
     }
-    resultado = db.productos.insert_one(nuevo)
-    return jsonify({"mensaje": "Producto creado", "id": str(resultado.inserted_id)}), 201
+
+    resultado_db = db.productos.insert_one(nuevo)
+    return jsonify({
+        "mensaje":    "Producto creado",
+        "id":         str(resultado_db.inserted_id),
+        "imagen_url": imagen_url
+    }), 201
 
 
 @productos_bp.route("/<id>", methods=["PUT"])
 @jwt_required()
 def editar_producto(id):
-    """
-    Editar un producto existente (solo admin)
-    ---
-    tags:
-      - Productos
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: id
-        type: string
-        required: true
-        description: ID del producto (MongoDB ObjectId)
-        example: "664f1a2b3c4d5e6f7a8b9c0d"
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            nombre:
-              type: string
-              example: "Collar Plateado"
-            precio:
-              type: number
-              example: 38000
-            stock:
-              type: integer
-              example: 15
-            categoria:
-              type: string
-              example: "Collares"
-            emoji:
-              type: string
-              example: "🌟"
-            codigo:
-              type: string
-              example: "COL-002"
-    responses:
-      200:
-        description: Producto actualizado exitosamente
-        schema:
-          type: object
-          properties:
-            mensaje:
-              type: string
-              example: "Producto actualizado"
-      403:
-        description: No autorizado — se requiere rol admin
-      401:
-        description: Token inválido o expirado
-      404:
-        description: Producto no encontrado
-    """
     claims = get_jwt()
     if claims.get("rol") != "admin":
         return jsonify({"error": "No autorizado"}), 403
-    
+
     data = request.get_json()
     db.productos.update_one({"_id": ObjectId(id)}, {"$set": data})
     return jsonify({"mensaje": "Producto actualizado"}), 200
@@ -244,39 +85,27 @@ def editar_producto(id):
 @productos_bp.route("/<id>", methods=["DELETE"])
 @jwt_required()
 def eliminar_producto(id):
-    """
-    Eliminar un producto (solo admin)
-    ---
-    tags:
-      - Productos
-    security:
-      - Bearer: []
-    parameters:
-      - in: path
-        name: id
-        type: string
-        required: true
-        description: ID del producto (MongoDB ObjectId)
-        example: "664f1a2b3c4d5e6f7a8b9c0d"
-    responses:
-      200:
-        description: Producto eliminado exitosamente
-        schema:
-          type: object
-          properties:
-            mensaje:
-              type: string
-              example: "Producto eliminado"
-      403:
-        description: No autorizado — se requiere rol admin
-      401:
-        description: Token inválido o expirado
-      404:
-        description: Producto no encontrado
-    """
     claims = get_jwt()
     if claims.get("rol") != "admin":
         return jsonify({"error": "No autorizado"}), 403
-    
+
     db.productos.delete_one({"_id": ObjectId(id)})
     return jsonify({"mensaje": "Producto eliminado"}), 200
+@productos_bp.route("/bulk-update", methods=["PUT"])
+@jwt_required()
+def bulk_update_imagenes():
+    claims = get_jwt()
+    if claims.get("rol") != "admin":
+        return jsonify({"error": "No autorizado"}), 403
+
+    actualizaciones = request.get_json()
+    contador = 0
+
+    for item in actualizaciones:
+        db.productos.update_one(
+            {"codigo": item["codigo"]},
+            {"$set": {"imagen_url": item["imagen_url"]}}
+        )
+        contador += 1
+
+    return jsonify({"mensaje": f"{contador} productos actualizados"}), 200
