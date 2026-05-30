@@ -3,20 +3,24 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from database import db
 from dotenv import load_dotenv
+from swagger_setup import init_swagger  # ✅ import al inicio
 import os
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__)  # ✅ primero se crea app
 CORS(app)
 
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
 jwt = JWTManager(app)
 
+init_swagger(app)  # ✅ luego se inicializa swagger, después de crear app
+
 from routes.auth import auth_bp
 from routes.productos import productos_bp
 from routes.pedidos import pedidos_bp
 from routes.inventario import inventario_bp
+
 app.register_blueprint(inventario_bp, url_prefix="/api/inventario")
 app.register_blueprint(pedidos_bp, url_prefix="/api/pedidos")
 app.register_blueprint(auth_bp, url_prefix="/api/auth")
